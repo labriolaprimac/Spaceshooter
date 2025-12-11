@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Shooter - Elite Edition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #0a0015, #1a0033, #000428);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        canvas {
+            display: block;
+            background: radial-gradient(ellipse at center, #1a1a3e 0%, #05050a 100%);
+            border: 4px solid #00ffff;
+            box-shadow: 0 0 40px rgba(0, 255, 255, 0.6), inset 0 0 60px rgba(0, 100, 255, 0.2);
+            border-radius: 15px;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 255, 255, 0.5);
+            display: flex;
+            justify-content: space-between;
+            z-index: 10;
+        }
+
+        #score, #lives, #wave {
+            background: linear-gradient(135deg, rgba(0, 20, 40, 0.9), rgba(0, 40, 80, 0.9));
+            padding: 12px 25px;
+            border-radius: 15px;
+            border: 3px solid #00ffff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(135deg, rgba(10, 0, 30, 0.95), rgba(40, 0, 60, 0.95));
+            padding: 50px;
+            border-radius: 25px;
+            border: 4px solid #ff0099;
+            text-align: center;
+            display: none;
+            z-index: 20;
+            box-shadow: 0 0 50px rgba(255, 0, 153, 0.6);
+        }
+
+        #gameOver h1 {
+            color: #ff0099;
+            font-size: 56px;
+            margin-bottom: 25px;
+            text-shadow: 0 0 30px #ff0099, 0 0 60px #ff0099;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        #gameOver p {
+            color: #00ffff;
+            font-size: 28px;
+            margin-bottom: 35px;
+            text-shadow: 0 0 10px #00ffff;
+        }
+
+        #restartBtn {
+            background: linear-gradient(135deg, #00ffff, #0099ff);
+            color: white;
+            border: none;
+            padding: 18px 50px;
+            font-size: 22px;
+            font-weight: bold;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 6px 20px rgba(0, 255, 255, 0.5);
+            text-transform: uppercase;
+        }
+
+        #restartBtn:hover {
+            transform: scale(1.15) translateY(-2px);
+            box-shadow: 0 10px 35px rgba(0, 255, 255, 0.7);
+        }
+
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+            font-size: 18px;
+            background: linear-gradient(135deg, rgba(0, 20, 40, 0.9), rgba(0, 40, 80, 0.9));
+            padding: 18px 30px;
+            border-radius: 15px;
+            border: 3px solid #00ffff;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+        }
+
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle 3s infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.2; }
+            50% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="ui">
+            <div id="score">⭐ Punteggio: 0</div>
+            <div id="wave">🌊 Ondata: 1</div>
+            <div id="lives">❤️ Vite: 6</div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div id="gameOver">
+            <h1>💀 GAME OVER 💀</h1>
+            <p id="finalScore">Punteggio Finale: 0</p>
+            <p id="finalWave">Ondata Raggiunta: 1</p>
+            <button id="restartBtn">🚀 Gioca Ancora</button>
+        </div>
+        <div id="instructions">
+            ⬅️ ➡️ Muovi Navicella | SPAZIO Spara Laser
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 900;
+        canvas.height = 700;
+
+        // Stato del gioco
+        let gameState = {
+            score: 0,
+            lives: 6,
+            wave: 1,
+            isGameOver: false,
+            frameCount: 0,
+            spawnRate: 60
+        };
+
+        // Navicella migliorata
+        const player = {
+            x: canvas.width / 2 - 30,
+            y: canvas.height - 100,
+            width: 60,
+            height: 50,
+            speed: 8,
+            color: '#00ffff',
+            canShoot: true,
+            shootCooldown: 0
+        };
+
+        // Array
+        let bullets = [];
+        let aliens = [];
+        let particles = [];
+        let powerUps = [];
+
+        // Input
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ' && !gameState.isGameOver && player.canShoot) {
+                e.preventDefault();
+                shootBullet();
+                player.canShoot = false;
+                player.shootCooldown = 15;
+            }
+        });
+        document.addEventListener('keyup', (e) => keys[e.key] = false);
+
+        // Crea stelle animate
+        function createStars() {
+            for (let i = 0; i < 150; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                const size = Math.random() * 3 + 1;
+                star.style.width = star.style.height = size + 'px';
+                star.style.animationDelay = Math.random() * 3 + 's';
+                star.style.animationDuration = (2 + Math.random() * 2) + 's';
+                document.body.appendChild(star);
+            }
+        }
+
+        // Disegna navicella super migliorata
+        function drawPlayer() {
+            // Fiamme propulsore principale (centro)
+            const flameHeight = 20 + Math.random() * 15;
+            
+            const flameGradient = ctx.createLinearGradient(0, player.y + player.height, 0, player.y + player.height + flameHeight);
+            flameGradient.addColorStop(0, '#00ffff');
+            flameGradient.addColorStop(0.2, '#00ccff');
+            flameGradient.addColorStop(0.5, '#0099ff');
+            flameGradient.addColorStop(1, 'rgba(0, 100, 255, 0)');
+            
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#00ccff';
+            ctx.fillStyle = flameGradient;
+            ctx.beginPath();
+            ctx.moveTo(player.x + player.width / 2, player.y + player.height - 5);
+            ctx.lineTo(player.x + player.width / 2 - 8, player.y + player.height + flameHeight);
+            ctx.lineTo(player.x + player.width / 2 + 8, player.y + player.height + flameHeight);
+            ctx.closePath();
+            ctx.fill();
+
+            // Fiamme laterali (sinistra)
+            const leftFlame = 18 + Math.random() * 12;
+            ctx.fillStyle = flameGradient;
+            ctx.beginPath();
+            ctx.moveTo(player.x + 12, player.y + player.height - 2);
+            ctx.lineTo(player.x + 8, player.y + player.height + leftFlame);
+            ctx.lineTo(player.x + 16, player.y + player.height + leftFlame);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Fiamme laterali (destra)
+            const rightFlame = 18 + Math.random() * 12;
+            ctx.beginPath();
+            ctx.moveTo(player.x + player.width - 12, player.y + player.height - 2);
+            ctx.lineTo(player.x + player.width - 16, player.y + player.height + rightFlame);
+            ctx.lineTo(player.x + player.width - 8, player.y + player.height + rightFlame);
+            ctx.closePath();
+            ctx.fill();
+
+            // Corpo principale (metallico)
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = player.color;
+            
+            const bodyGradient = ctx.createLinearGradient(player.x, player.y, player.x + player.width, player.y);
+            bodyGradient.addColorStop(0, '#00aacc');
+            bodyGradient.addColorStop(0.5, '#00ffff');
+            bodyGradient.addColorStop(1, '#00aacc');
+            
+            ctx.fillStyle = bodyGradient;
+            ctx.beginPath();
+            ctx.moveTo(player.x + player.width / 2, player.y);
+            ctx.lineTo(player.x + player.width, player.y + player.height);
+            ctx.lineTo(player.x + player.width / 2 + 5, player.y + player.height - 15);
+            ctx.lineTo(player.x + player.width / 2 - 5, player.y + player.height - 15);
+            ctx.lineTo(player.x, player.y + player.height);
+            ctx.closePath();
+            ctx.fill();
+
+            // Ali laterali
+            ctx.fillStyle = '#0088aa';
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y + 25);
+            ctx.lineTo(player.x - 15, player.y + 35);
+            ctx.lineTo(player.x, player.y + 40);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(player.x + player.width, player.y + 25);
+            ctx.lineTo(player.x + player.width + 15, player.y + 35);
+            ctx.lineTo(player.x + player.width, player.y + 40);
+            ctx.closePath();
+            ctx.fill();
+
+            // Cabina con effetto vetro
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#00ffff';
+            const cockpitGradient = ctx.createRadialGradient(
+                player.x + player.width / 2, player.y + 20, 5,
+                player.x + player.width / 2, player.y + 20, 12
+            );
+            cockpitGradient.addColorStop(0, '#88ffff');
+            cockpitGradient.addColorStop(0.5, '#00ccff');
+            cockpitGradient.addColorStop(1, '#0099cc');
+            
+            ctx.fillStyle = cockpitGradient;
+            ctx.beginPath();
+            ctx.arc(player.x + player.width / 2, player.y + 20, 12, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Riflesso vetro
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.beginPath();
+            ctx.arc(player.x + player.width / 2 - 3, player.y + 17, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Dettagli tecnologici
+            ctx.fillStyle = '#ff0099';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#ff0099';
+            ctx.fillRect(player.x + 15, player.y + 35, 3, 8);
+            ctx.fillRect(player.x + player.width - 18, player.y + 35, 3, 8);
+
+            ctx.shadowBlur = 0;
+        }
+
+        // Spara proiettile potenziato
+        function shootBullet() {
+            bullets.push({
+                x: player.x + player.width / 2 - 3,
+                y: player.y - 5,
+                width: 6,
+                height: 25,
+                speed: 12,
+                color: '#00ffff',
+                trail: []
+            });
+        }
+
+        // Crea alieno migliorato
+        function createAlien() {
+            const types = ['scout', 'fighter', 'destroyer', 'boss'];
+            const type = types[Math.min(Math.floor(Math.random() * (1 + gameState.wave / 3)), 3)];
+            
+            let alienData = {
+                x: Math.random() * (canvas.width - 60),
+                y: -60,
+                speed: 1.5 + Math.random() * 1.5 + (gameState.wave * 0.2),
+                type: type,
+                health: 1,
+                points: 10,
+                wobble: Math.random() * Math.PI * 2
+            };
+
+            switch(type) {
+                case 'scout':
+                    alienData.width = 35;
+                    alienData.height = 35;
+                    alienData.color = '#ff0099';
+                    alienData.health = 1;
+                    alienData.points = 10;
+                    break;
+                case 'fighter':
+                    alienData.width = 45;
+                    alienData.height = 45;
+                    alienData.color = '#ff6600';
+                    alienData.health = 2;
+                    alienData.points = 25;
+                    break;
+                case 'destroyer':
+                    alienData.width = 55;
+                    alienData.height = 55;
+                    alienData.color = '#9900ff';
+                    alienData.health = 3;
+                    alienData.points = 50;
+                    break;
+                case 'boss':
+                    alienData.width = 70;
+                    alienData.height = 70;
+                    alienData.color = '#ff0000';
+                    alienData.health = 5;
+                    alienData.points = 100;
+                    alienData.speed *= 0.7;
+                    break;
+            }
+
+            aliens.push(alienData);
+        }
+
+        // Disegna alieno migliorato
+        function drawAlien(alien) {
+            ctx.save();
+            ctx.translate(alien.x + alien.width / 2, alien.y + alien.height / 2);
+            
+            // Effetto pulsazione per boss
+            if (alien.type === 'boss') {
+                const pulse = 1 + Math.sin(gameState.frameCount * 0.1) * 0.1;
+                ctx.scale(pulse, pulse);
+            }
+
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = alien.color;
+
+            // Corpo alieno con gradiente
+            const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, alien.width / 2);
+            gradient.addColorStop(0, alien.color);
+            gradient.addColorStop(0.7, alien.color);
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+
+            if (alien.type === 'scout') {
+                // Forma a diamante
+                ctx.moveTo(0, -alien.height / 2);
+                ctx.lineTo(alien.width / 2, 0);
+                ctx.lineTo(0, alien.height / 2);
+                ctx.lineTo(-alien.width / 2, 0);
+            } else if (alien.type === 'fighter') {
+                // Forma esagonale
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i * Math.PI * 2) / 6;
+                    const x = Math.cos(angle) * alien.width / 2;
+                    const y = Math.sin(angle) * alien.height / 2;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+            } else if (alien.type === 'destroyer') {
+                // Forma a stella a 8 punte
+                for (let i = 0; i < 8; i++) {
+                    const angle = (i * Math.PI * 2) / 8;
+                    const radius = i % 2 === 0 ? alien.width / 2 : alien.width / 3;
+                    const x = Math.cos(angle) * radius;
+                    const y = Math.sin(angle) * radius;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+            } else {
+                // Boss - forma complessa
+                ctx.arc(0, 0, alien.width / 2, 0, Math.PI * 2);
+            }
+            
+            ctx.closePath();
+            ctx.fill();
+
+            // Dettagli alieni
+            ctx.shadowBlur = 0;
+            
+            // Occhi con bagliore
+            ctx.fillStyle = '#ffff00';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#ffff00';
+            ctx.beginPath();
+            ctx.arc(-alien.width / 4, -5, 6, 0, Math.PI * 2);
+            ctx.arc(alien.width / 4, -5, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#ff0000';
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = '#ff0000';
+            ctx.beginPath();
+            ctx.arc(-alien.width / 4, -5, 3, 0, Math.PI * 2);
+            ctx.arc(alien.width / 4, -5, 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Indicatore vita per nemici forti
+            if (alien.health > 1) {
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(-alien.width / 2, alien.height / 2 + 5, alien.width, 5);
+                
+                ctx.fillStyle = alien.health > 3 ? '#ff0000' : alien.health > 2 ? '#ff6600' : '#ffff00';
+                const healthWidth = (alien.width * alien.health) / (alien.type === 'boss' ? 5 : alien.type === 'destroyer' ? 3 : 2);
+                ctx.fillRect(-alien.width / 2, alien.height / 2 + 5, healthWidth, 5);
+            }
+
+            ctx.restore();
+        }
+
+        // Crea esplosione migliorata
+        function createExplosion(x, y, color, size = 1) {
+            for (let i = 0; i < 25 * size; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 40,
+                    maxLife: 40,
+                    color: color,
+                    size: Math.random() * 5 * size + 2
+                });
+            }
+        }
+
+        // Aggiorna gioco
+        function update() {
+            if (gameState.isGameOver) return;
+
+            gameState.frameCount++;
+
+            // Cooldown sparo
+            if (player.shootCooldown > 0) {
+                player.shootCooldown--;
+                if (player.shootCooldown === 0) player.canShoot = true;
+            }
+
+            // Muovi giocatore
+            if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed;
+            if (keys['ArrowRight'] && player.x < canvas.width - player.width) player.x += player.speed;
+
+            // Aggiorna proiettili con scia
+            bullets = bullets.filter(bullet => {
+                bullet.trail.push({x: bullet.x + bullet.width / 2, y: bullet.y, life: 10});
+                bullet.trail = bullet.trail.filter(t => t.life-- > 0);
+                bullet.y -= bullet.speed;
+                return bullet.y > -bullet.height;
+            });
+
+            // Sistema di ondate
+            const spawnRate = Math.max(30, gameState.spawnRate - gameState.wave * 2);
+            if (gameState.frameCount % spawnRate === 0) {
+                createAlien();
+            }
+
+            // Aumenta difficoltà
+            if (gameState.frameCount % 1000 === 0) {
+                gameState.wave++;
+                updateUI();
+            }
+
+            // Aggiorna alieni con movimento wobble
+            aliens = aliens.filter(alien => {
+                alien.y += alien.speed;
+                alien.wobble += 0.05;
+                alien.x += Math.sin(alien.wobble) * 2;
+                
+                if (alien.y > canvas.height) {
+                    gameState.lives--;
+                    updateUI();
+                    if (gameState.lives <= 0) {
+                        endGame();
+                    }
+                    return false;
+                }
+                return true;
+            });
+
+            // Collisioni
+            bullets.forEach((bullet, bIndex) => {
+                aliens.forEach((alien, aIndex) => {
+                    if (bullet.x < alien.x + alien.width &&
+                        bullet.x + bullet.width > alien.x &&
+                        bullet.y < alien.y + alien.height &&
+                        bullet.y + bullet.height > alien.y) {
+                        
+                        alien.health--;
+                        bullets.splice(bIndex, 1);
+                        
+                        if (alien.health <= 0) {
+                            createExplosion(alien.x + alien.width / 2, alien.y + alien.height / 2, alien.color, alien.type === 'boss' ? 2 : 1);
+                            aliens.splice(aIndex, 1);
+                            gameState.score += alien.points;
+                            updateUI();
+                        }
+                    }
+                });
+            });
+
+            // Aggiorna particelle
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.2;
+                p.life--;
+                return p.life > 0;
+            });
+        }
+
+        // Disegna tutto
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Disegna particelle
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / p.maxLife;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+            ctx.shadowBlur = 0;
+
+            // Disegna scia proiettili
+            bullets.forEach(bullet => {
+                bullet.trail.forEach((t, i) => {
+                    ctx.fillStyle = bullet.color;
+                    ctx.globalAlpha = (t.life / 10) * 0.5;
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            });
+            ctx.globalAlpha = 1;
+
+            // Disegna proiettili
+            bullets.forEach(bullet => {
+                const gradient = ctx.createLinearGradient(bullet.x, bullet.y, bullet.x, bullet.y + bullet.height);
+                gradient.addColorStop(0, '#ffffff');
+                gradient.addColorStop(0.5, bullet.color);
+                gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+                
+                ctx.fillStyle = gradient;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = bullet.color;
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+                ctx.shadowBlur = 0;
+            });
+
+            // Disegna alieni
+            aliens.forEach(drawAlien);
+
+            // Disegna giocatore
+            drawPlayer();
+        }
+
+        // Aggiorna UI
+        function updateUI() {
+            document.getElementById('score').textContent = `⭐ Punteggio: ${gameState.score}`;
+            document.getElementById('wave').textContent = `🌊 Ondata: ${gameState.wave}`;
+            document.getElementById('lives').textContent = `❤️ Vite: ${gameState.lives}`;
+        }
+
+        // Fine gioco
+        function endGame() {
+            gameState.isGameOver = true;
+            document.getElementById('finalScore').textContent = `Punteggio Finale: ${gameState.score}`;
+            document.getElementById('finalWave').textContent = `Ondata Raggiunta: ${gameState.wave}`;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        // Riavvia gioco
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            gameState = {
+                score: 0,
+                lives: 6,
+                wave: 1,
+                isGameOver: false,
+                frameCount: 0,
+                spawnRate: 60
+            };
+            bullets = [];
+            aliens = [];
+            particles = [];
+            player.x = canvas.width / 2 - 30;
+            player.canShoot = true;
+            player.shootCooldown = 0;
+            document.getElementById('gameOver').style.display = 'none';
+            updateUI();
+        });
+
+        // Loop di gioco
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Inizializza
+        createStars();
+        updateUI();
+        gameLoop();
+    </script>
+</body>
+</html>
